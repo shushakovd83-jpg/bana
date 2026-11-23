@@ -61,9 +61,13 @@ async function drain(env){
   }
  }
 }
+const pagesOrigin = 'https://shushakovd83-jpg.github.io';
+function pagesBookingRequest(req) {
+ return new URL(req.url).pathname === '/api/bookings' && req.headers.get('origin') === pagesOrigin;
+}
 async function body(req){
  if(!req.headers.get('content-type')?.includes('application/json'))fail(415,'Требуется JSON.');
- if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin)fail(403,'Запрос отклонён.');
+ if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin&&!pagesBookingRequest(req))fail(403,'Запрос отклонён.');
  if(Number(req.headers.get('content-length'))>8192)fail(413,'Слишком большой запрос.');
  const text=await req.text();if(text.length>8192)fail(413,'Слишком большой запрос.');
  try{const b=JSON.parse(text);if(!b||typeof b!=='object')throw Error();return b;}catch{fail(400,'Некорректная заявка.');}
@@ -122,4 +126,25 @@ async function route(req,env,ctx){
  if(req.method!=='GET')return new Response(null,{status:405});
  return asset(p==='/'?'/index.html':p);
 }
-export default {async fetch(req,env,ctx){try{return await route(req,env,ctx);}catch(e){return json({error:e.status?e.message:'Сервис временно недоступен. Попробуйте ещё раз.'},e.status||503);}},async scheduled(_,env,ctx){ctx.waitUntil(drain(env));}};
+export default {
+ async fetch(req, env, ctx) {
+  const fromPages = pagesBookingRequest(req);
+  const preflight = fromPages && req.method === 'OPTIONS';
+  let response;
+  try {
+   response = preflight ? new Response(null, {status:204}) : await route(req, env, ctx);
+  } catch (e) {
+   response = json({error:e.status ? e.message : 'Сервис временно недоступен. Попробуйте ещё раз.'},e.status || 503);
+  }
+  if (fromPages) {
+   response.headers.set('Access-Control-Allow-Origin', pagesOrigin);
+   response.headers.append('Vary', 'Origin');
+   if (preflight) {
+    response.headers.set('Access-Control-Allow-Methods', 'POST');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type');
+   }
+  }
+  return response;
+ },
+ async scheduled(_,env,ctx) { ctx.waitUntil(drain(env)); }
+};

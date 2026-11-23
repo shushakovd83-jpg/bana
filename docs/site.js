@@ -111,7 +111,10 @@ form.addEventListener('submit', async event => {
     if (!pendingBooking || pendingBooking.fingerprint !== fingerprint) {
       pendingBooking = {fingerprint, id: crypto.randomUUID()};
     }
-    const response = await fetch('/api/bookings', {
+    const bookingEndpoint = location.origin === 'https://shushakovd83-jpg.github.io'
+      ? 'https://vesna-banya-chaikovsky.almondmarmalade4.chatgpt.site/api/bookings'
+      : '/api/bookings';
+    const response = await fetch(bookingEndpoint, {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
       body: JSON.stringify({...booking, id: pendingBooking.id}),
