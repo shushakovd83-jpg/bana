@@ -1,0 +1,20 @@
+.admin-head { background: #2c211b; color: #fff6e7; }
+.admin-head .wrap, .admin-heading, .entry-top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.admin-head .wrap { min-height: 5.25rem; }
+.admin-main { max-width: 65rem; padding-block: clamp(2.2rem,5vw,4.5rem); }
+.admin-heading h1 { font-size: clamp(2.2rem,5vw,3.8rem); margin: 0; letter-spacing: -.06em; line-height: 1.1; font-weight: 520; }
+.admin-heading p, .previous, .entry-price, #journal-status { color: var(--muted); }
+.admin-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
+.admin-heading { margin-bottom: 1.5rem; }
+#entries { list-style:none; margin:0; padding:0; }
+.entry { background:#fffbf5; border:1px solid var(--line); padding:clamp(1.1rem,2.5vw,1.7rem); border-radius:.8rem; margin-top: .75rem; overflow-wrap: anywhere; }
+.entry-top { align-items:start; margin-bottom:.75rem; }
+.entry h2 { font-size:clamp(1.35rem,3vw,1.75rem); letter-spacing:-.035em; line-height:1.18; }
+.guest-info { margin-top:.3rem; }
+.guest-info a { text-decoration: underline; text-underline-offset: .16em; }
+.status-label { font-size:.9rem; font-weight:550; color:var(--copper); text-align:right; }
+.entry-edit summary { cursor:pointer; padding:.65rem 0; display:list-item; font-weight:550; }
+.entry-edit { margin-top:.7rem; border-top:1px solid var(--line); }
+.entry-edit .fields { grid-template-columns:repeat(3,minmax(0,1fr)); margin:.5rem 0 1rem; }
+.save-status:not(:empty) { margin:.7rem 0; }
+@media(max-width:650px){.admin-heading { flex-direction:column; align-items:start; }.entry-edit .fields{grid-template-columns:1fr 1fr;}.entry-edit .fields label:last-child{grid-column:1/-1;}.entry-top{flex-wrap:wrap;}.status-label{text-align:left;}.admin-heading h1{font-size:2.3rem;}}

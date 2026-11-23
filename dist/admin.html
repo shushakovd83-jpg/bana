@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Журнал заявок · Баня «Весна»</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/admin.css">
+  <script defer src="/admin.js"></script>
+</head>
+<body class="admin">
+  <header class="admin-head"><div class="wrap">
+    <a class="wordmark" href="/">Весна<span>БАНЯ</span></a>
+    <a href="/">На сайт</a>
+  </div></header>
+  <main class="wrap admin-main">
+    <div class="admin-heading">
+      <div><h1>Журнал заявок</h1><p>Время местное, г. Чайковский.</p></div>
+      <div class="admin-actions">
+        <button type="button" class="button neutral" id="reload">Обновить</button>
+        <a href="/api/export.xlsx" class="button primary">Скачать Excel</a>
+      </div>
+    </div>
+    <p id="journal-status" role="status">Загружаем заявки…</p>
+    <ul id="entries" aria-label="Заявки"></ul>
+    <template id="entry-template">
+      <li class="entry">
+        <div class="entry-top"><div><h2 class="entry-title"></h2><p class="guest-info"></p></div><strong class="status-label"></strong></div>
+        <p class="entry-time"></p><p class="entry-price"></p><p class="previous" hidden></p>
+        <details class="entry-edit"><summary>Изменить бронь</summary>
+          <form>
+            <div class="fields">
+              <label>Дата приезда<input type="date" name="day" required></label>
+              <label>Время начала<input type="time" name="start" min="10:00" required></label>
+              <label>Статус<select name="status"><option value="new">Новая заявка</option><option value="confirmed">Бронь подтверждена</option><option value="cancelled">Бронь отменена</option></select></label>
+            </div>
+            <p class="save-status" role="status"></p>
+            <button type="submit" class="button primary">Сохранить изменения</button>
+          </form>
+        </details>
+      </li>
+    </template>
+    <noscript>Включите JavaScript для работы с журналом. Файл Excel доступен по ссылке выше.</noscript>
+  </main>
+</body>
+</html>
