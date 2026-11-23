@@ -1,0 +1,9 @@
+exclude:
+  - dist/
+  - downloads/
+  - node_modules/
+  - scripts/
+  - src/
+  - package.json
+  - package-lock.json
+  - README.md

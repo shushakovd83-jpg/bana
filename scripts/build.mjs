@@ -1,10 +1,11 @@
 import {build} from 'esbuild';
 import {readFile,readdir} from 'node:fs/promises';
 const files={};
-for (const folder of ['docs', 'docs/assets', 'dist']) {
+for (const folder of ['.', 'assets', 'dist']) {
   for (const entry of await readdir(folder, {withFileTypes: true})) {
     if (!entry.isFile() || entry.name.startsWith('.')) continue;
-    const url = folder === 'docs/assets' ? '/assets/' + entry.name : '/' + entry.name;
+    if (folder === '.' && !['index.html', 'style.css', 'site.js'].includes(entry.name)) continue;
+    const url = folder === 'assets' ? '/assets/' + entry.name : '/' + entry.name;
     files[url] = (await readFile(folder + '/' + entry.name)).toString('base64');
   }
 }
