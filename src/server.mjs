@@ -125,6 +125,10 @@ async function body(req){
 async function route(req,env,ctx){
  const {pathname:p}=new URL(req.url);
  if (!allowedOrigin(req, env)) fail(403,'Запрос отклонён.');
+ if (req.method === 'GET' && ['/', '/admin', '/admin/'].includes(p)) {
+  const destination=pagesOrigin + '/bana/' + (p === '/' ? '' : 'admin/');
+  return new Response(null,{status:302,headers:{Location:destination,'Cache-Control':'no-store'}});
+ }
  if (p === '/health' && req.method === 'GET') return json({service:'vesna-bookings', ready:true});
  if (p === '/api/session' && req.method === 'POST') {
   const data=await body(req);

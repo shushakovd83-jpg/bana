@@ -18,10 +18,11 @@ const VesnaAPI = (() => {
     return result.json();
   }
   async function origin(path = '') {
-    if (!ready) ready = loadConfig().catch(error => {ready = undefined; throw error;});
-    const config = await ready;
-    // During cutover only public submissions may use the previously deployed API.
-    const value = config.apiOrigin || (path === '/api/bookings' && config.bookingOriginDuringMigration);
+    // A guest may have opened the form before the server cutover.
+    const guest = path === '/api/bookings';
+    if (!guest && !ready) ready = loadConfig().catch(error => {ready = undefined; throw error;});
+    const config = guest ? await loadConfig() : await ready;
+    const value = config.apiOrigin || (guest && config.bookingOriginDuringMigration);
     if (!value) throw new Error('Сервер онлайн-записи ещё не подключён.');
     return checkedOrigin(value);
   }

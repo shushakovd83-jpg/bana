@@ -5,7 +5,7 @@ if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || 
   throw Error('Укажите публичный HTTPS-адрес приложения без пути.');
 }
 const origin = 'https://shushakovd83-jpg.github.io';
-const probe = (path, options = {}) => fetch(new URL(path, endpoint), {headers:{Origin:origin, ...options.headers}, ...options,
+const probe = (path, options = {}) => fetch(new URL(path, endpoint), {...options, headers:{Origin:origin, ...options.headers},
   redirect:'error', signal:AbortSignal.timeout(15000)});
 const response = await probe('/health');
 if (!response.ok || response.headers.get('access-control-allow-origin') !== origin) throw Error('Сервер ещё не разрешил доступ с GitHub Pages.');

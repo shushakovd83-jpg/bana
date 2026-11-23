@@ -224,7 +224,12 @@ loginForm.addEventListener('submit', async event => {
 });
 
 document.querySelector('#logout').addEventListener('click', async () => {
-  try { await authorized('/api/session', {method:'DELETE'}); } finally { lockJournal(); }
+  try {
+    await authorized('/api/session', {method:'DELETE'});
+    lockJournal();
+  } catch {
+    lockJournal('Вы вышли из журнала на этом устройстве.');
+  }
 });
 document.querySelector('#excel').addEventListener('click', async event => {
   const button = event.currentTarget;
