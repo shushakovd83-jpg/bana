@@ -7,7 +7,7 @@ import worker from '../src/server.mjs';
 test('only the repository notification workflow on main can run delivery', async () => {
   const keys = await generateKeyPair('RS256');
   const audience = 'https://vesna-banya-chaikovsky.almondmarmalade4.chatgpt.site/api/jobs/notifications';
-  const payload = {repository_id:'1468916528', ref:'refs/heads/main', event_name:'schedule',
+  const payload = {repository:'shushakovd83-jpg/bana', repository_id:'1468916528', ref:'refs/heads/main', event_name:'schedule',
     workflow_ref:'shushakovd83-jpg/bana/.github/workflows/booking-notifications.yml@refs/heads/main'};
   async function header(change = {}, aud = audience) {
     const token = await new SignJWT({...payload, ...change}).setProtectedHeader({alg:'RS256'})
@@ -16,7 +16,7 @@ test('only the repository notification workflow on main can run delivery', async
     return 'Bearer ' + token;
   }
   assert.equal(await authorizedJob(await header(), keys.publicKey), true);
-  for (const change of [{ref:'refs/heads/demo'},{repository_id:'9'},{event_name:'pull_request'},{workflow_ref:'other'}]) {
+  for (const change of [{ref:'refs/heads/demo'},{repository_id:'9'},{repository:'some/other-repo'},{event_name:'pull_request'},{workflow_ref:'other'}]) {
     assert.equal(await authorizedJob(await header(change), keys.publicKey), false);
   }
   assert.equal(await authorizedJob(await header({}, 'other-audience'), keys.publicKey), false);
