@@ -1,4 +1,6 @@
-import {excel} from './excel.mjs';
+import {notificationTool} from './notification-tool.mjs';
+import {syncWorkbook, downloadWorkbook, workbookKey} from './workbook.mjs';
+import {setVKToken, vkCredentials} from './vk-settings.mjs';
 import {sendVK, callback, vkLink} from './vk.mjs';
 const KEY='private/journal-v1.json';
 const json=(v,status=200)=>Response.json(v,{status,headers:{'Cache-Control':'private, no-store'}});
@@ -30,37 +32,88 @@ function validate(b){
  slot(b,false);
  return Object.fromEntries(['id','day','start','hours','guests','guestName','phone','tariff'].map(k=>[k,b[k]]));
 }
-const vkReady=e=>Boolean(e.VK_TOKEN&&e.VK_ADMIN_PEER);
-function queue(row,peer,message,kind='notice'){
- row.events.push({kind,peer,message,n:crypto.getRandomValues(new Uint32Array(1))[0]%2147483646+1});
+function queue(row, peer, message, kind = 'notice') {
+ const n = crypto.getRandomValues(new Uint32Array(1))[0] % 2147483646 + 1;
+ row.events.push({kind, peer, message, n});
 }
-const details=r=>r.day+' в '+r.start+' · '+r.hours+' ч · '+r.guestName+' · '+r.phone+' · гостей: '+r.guests;
-async function drain(env){
- if(!vkReady(env))return;
- const {rows}=await read(env);
- for(const row of rows){
-  const remaining=slot(row,false)-Date.now();
-  if(row.status==='confirmed'&&remaining>0&&remaining<=86400000){
-   await change(env,all=>{
-    const r=all.find(x=>x.id===row.id);
-    if(r.version!==row.version||r.status!=='confirmed')return {skip:true};
-    let added=false;
-    for(const peer of new Set([env.VK_ADMIN_PEER,r.peer].filter(Boolean).map(String))){
-     const tag=r.day+'/'+r.start+'/'+peer;
-     if(r.reminders.includes(tag))continue;
-     r.reminders.push(tag);queue(r,peer,'Напоминание о визите в баню «Весна»: '+details(r),'reminder');added=true;
-    }
-    return {skip:!added};
+
+function details(row) {
+ const minutes = Number(row.start.slice(0, 2)) * 60 + Number(row.start.slice(3)) + row.hours * 60;
+ const end = String(Math.floor(minutes / 60)).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
+ const barrel = row.tariff === 'barrel';
+ const price = barrel ? 4500 + row.hours * 1500 : row.hours * 1800;
+ return [row.day.split('-').reverse().join('.') + ', ' + row.start + '–' + end,
+  row.guestName + ' · ' + row.phone, 'Гостей: ' + row.guests,
+  (barrel ? 'Баня с кедровой бочкой' : 'Только баня') + ' · ' + price + ' ₽'].join('\n');
+}
+
+async function queueReminders(env, adminPeer) {
+ await change(env, rows => {
+  let added = false;
+  for (const row of rows) {
+   const remaining = slot(row, false) - Date.now();
+   if (row.status !== 'confirmed' || remaining <= 0 || remaining > 86400000) continue;
+   for (const peer of new Set([adminPeer, row.peer].filter(Boolean).map(String))) {
+    const tag = row.day + '/' + row.start + '/' + peer;
+    if (row.reminders.includes(tag)) continue;
+    row.reminders.push(tag);
+    queue(row, peer, 'Напоминание о визите в баню «Весна»:\n' + details(row), 'reminder');
+    added = true;
+   }
+  }
+  return {skip: !added};
+ });
+}
+
+async function dispatch(env, bookingId, force = false) {
+ const credentials = await vkCredentials(env);
+ const result = {connected: !!credentials, sent: 0, failed: 0};
+ if (!credentials) return result;
+ if (!bookingId) await queueReminders(env, credentials.VK_ADMIN_PEER);
+
+ const {rows} = await read(env);
+ // Give the current booking the first send attempt, then retry other due events.
+ const first = bookingId && rows.find(row => row.id === bookingId);
+ const ordered = first ? [first, ...rows.filter(row => row !== first)] : rows;
+ let attempts = 0;
+ for (const row of ordered) {
+  for (const event of row.events) {
+   if (!force && event.retryAfter && Date.parse(event.retryAfter) > Date.now()) continue;
+   if (++attempts > 10) return result;
+   const peer = event.peer === 'admin' ? credentials.VK_ADMIN_PEER : event.peer;
+   try {
+    // VK uses the saved random_id to deduplicate parallel workers and retries.
+    await sendVK(credentials, peer, event.message, event.n);
+   } catch {
+    await change(env, current => {
+     const pending = current.find(r => r.id === row.id)?.events.find(e => e.n === event.n);
+     if (!pending) return {skip:true};
+     pending.attempts = (pending.attempts || 0) + 1;
+     const delayMinutes = Math.min(360, 2 ** Math.min(pending.attempts - 1, 9));
+     pending.retryAfter = new Date(Date.now() + delayMinutes * 60000).toISOString();
+     return {};
+    });
+    result.failed++;
+    continue;
+   }
+   await change(env, current => {
+    const entry = current.find(r => r.id === row.id);
+    if (!entry || !entry.events.some(e => e.n === event.n)) return {skip: true};
+    entry.events = entry.events.filter(e => e.n !== event.n);
+    if (event.kind === 'booking') entry.adminNotifiedAt = new Date().toISOString();
+    return {};
    });
+   result.sent++;
   }
  }
- for(const row of (await read(env)).rows){
-  for(const event of row.events){
-   await sendVK(env,event.peer,event.message,event.n);
-   await change(env,all=>{const r=all.find(x=>x.id===row.id);r.events=r.events.filter(e=>e.n!==event.n);return {};});
-  }
- }
+ return result;
 }
+
+function isOwner(req, env) {
+ return !!req.headers.get('oai-authenticated-user-id') && !!env.JOURNAL_OWNER_EMAIL &&
+  req.headers.get('oai-authenticated-user-email')?.toLowerCase() === env.JOURNAL_OWNER_EMAIL.toLowerCase();
+}
+
 const pagesOrigin = 'https://shushakovd83-jpg.github.io';
 function pagesBookingRequest(req) {
  return new URL(req.url).pathname === '/api/bookings' && req.headers.get('origin') === pagesOrigin;
@@ -79,6 +132,14 @@ function asset(path,privatePage=false){
 }
 async function route(req,env,ctx){
  const {pathname:p}=new URL(req.url);
+ if (p === '/mcp') return notificationTool(req, isOwner(req, env), async () => {
+  await syncWorkbook(env, read);
+  const result = await dispatch(env);
+  // Read the stored file metadata and the queue again after processing.
+  const stored = await env.BUCKET.head(workbookKey);
+  const {rows} = await read(env);
+  return {excelReady: !!stored, ...result, pending: rows.reduce((n,r) => n + r.events.length, 0)};
+ });
  if(p==='/vk/callback')return callback(req,env,(token,peer)=>change(env,rows=>{
   const row=rows.find(r=>r.token===token);
   if(!row||row.peer)return {skip:true};row.peer=peer;return {};
@@ -89,26 +150,54 @@ async function route(req,env,ctx){
    const prev=rows.find(r=>r.id===data.id);
    if(prev&&prev.fingerprint!==fingerprint)fail(409,'Используйте новый номер заявки.');
    const r=prev||{...data,fingerprint,status:'new',version:1,previous:'',created:new Date().toISOString(),events:[],reminders:[],token:crypto.randomUUID()};
-   if(!prev){slot(data);rows.push(r);if(vkReady(env))queue(r,env.VK_ADMIN_PEER,'Новая заявка: '+details(r));}
-   return {skip:!!prev,value:{id:r.id,...(vkReady(env)?{vkUrl:vkLink(r.token)}:{})}};
+   if (!prev) {
+    slot(data);
+    queue(r, 'admin', 'Новая заявка в баню «Весна»\n' + details(r), 'booking');
+    rows.push(r);
+   }
+   return {skip:!!prev,value:{id:r.id,...(env.VK_GROUP_ID && env.VK_CALLBACK_SECRET && env.VK_CONFIRMATION ? {vkUrl:vkLink(r.token)} : {})}};
   });
-  if(vkReady(env))ctx.waitUntil(drain(env));return json(result,201);
+  await syncWorkbook(env, read);
+  ctx.waitUntil(dispatch(env, data.id));
+  return json(result,201);
  }
- if(['/admin','/admin/','/admin.html','/api/admin','/api/export.xlsx'].includes(p)){
+ if(['/admin','/admin/','/admin.html','/api/admin','/api/export.xlsx','/api/admin/vk','/api/admin/vk/retry'].includes(p)){
   const uid=req.headers.get('oai-authenticated-user-id');
   if(!uid&&!p.startsWith('/api/'))return new Response(null,{status:302,headers:{Location:'/signin-with-chatgpt?return_to=%2Fadmin','Cache-Control':'private, no-store'}});
-  if(!uid||!env.JOURNAL_OWNER_EMAIL||req.headers.get('oai-authenticated-user-email')?.toLowerCase()!==env.JOURNAL_OWNER_EMAIL.toLowerCase())return json({error:'Доступ только для владельца.'},uid?403:401);
+  if(!isOwner(req,env))return json({error:'Доступ только для владельца.'},uid?403:401);
   if(p.startsWith('/admin')&&req.method==='GET')return asset('/admin.html',true);
-  if(req.method==='GET'){
-   const rows=(await read(env)).rows.map(({fingerprint,token,peer,events,reminders,...publicRow})=>publicRow).sort((a,b)=>b.created.localeCompare(a.created));
-   if(p==='/api/admin')return json(rows);
-   return new Response(excel(rows),{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="vesna.xlsx"','Cache-Control':'private, no-store'}});
+  if (p === '/api/admin/vk' && req.method === 'GET') {
+   const credentials = await vkCredentials(env);
+   const {rows} = await read(env);
+   const pending = rows.reduce((n,r) => n + r.events.length, 0);
+   return json({connected: !!credentials, pending});
+  }
+  if (p === '/api/admin/vk' && req.method === 'POST') {
+   const {token} = await body(req);
+   await setVKToken(env, token);
+   ctx.waitUntil(dispatch(env));
+   return json({connected: true});
+  }
+  if (p === '/api/admin/vk/retry' && req.method === 'POST') {
+   await body(req);
+   return json(await dispatch(env, undefined, true));
+  }
+  if (p === '/api/export.xlsx' && req.method === 'GET') return downloadWorkbook(env, read);
+  if (p === '/api/admin' && req.method === 'GET') {
+   const {rows} = await read(env);
+   return json(rows.map(({fingerprint,token,peer,events,reminders,...r}) => ({...r,
+    notification: r.adminNotifiedAt ? 'sent' : events.some(e => e.kind === 'booking') ? 'pending' : 'unknown'
+   })).sort((a,b) => b.created.localeCompare(a.created)));
   }
   if(p==='/api/admin'&&req.method==='POST'){
    const b=await body(req);
    await change(env,rows=>{
     const r=rows.find(x=>x.id===b.id);if(!r)fail(404,'Заявка не найдена.');
-    if(r.version!==b.version)fail(409,'Обновите журнал и повторите действие.');
+    if (r.version !== b.version) {
+     // An earlier attempt may have stored the change before the workbook was ready.
+     if (r.version === b.version + 1 && r.day === b.day && r.start === b.start && r.status === b.status) return {skip:true};
+     fail(409,'Обновите журнал и повторите действие.');
+    }
     if(!['new','confirmed','cancelled'].includes(b.status))fail(400,'Некорректный статус.');
     const moved=b.day!==r.day||b.start!==r.start;
     const start=slot({...r,day:b.day,start:b.start},moved||b.status==='confirmed');
@@ -116,9 +205,12 @@ async function route(req,env,ctx){
     if(moved)r.previous=r.day+' '+r.start;
     if(moved||b.status!=='confirmed'){r.events=r.events.filter(x=>x.kind!=='reminder');r.reminders=[];}
     Object.assign(r,{day:b.day,start:b.start,status:b.status,version:r.version+1});
-    if(vkReady(env))for(const peer of new Set([env.VK_ADMIN_PEER,r.peer].filter(Boolean)))queue(r,peer,(moved?'Перенос с '+r.previous:'Статус: '+({confirmed:'подтверждена',new:'новая',cancelled:'отменена'}[r.status]))+'. '+details(r));
+    for(const peer of new Set(['admin',r.peer].filter(Boolean)))queue(r,peer,(moved?'Перенос с '+r.previous:'Статус: '+({confirmed:'подтверждена',new:'новая',cancelled:'отменена'}[r.status]))+'. '+details(r));
     return {};
-   });if(vkReady(env))ctx.waitUntil(drain(env));return json({ok:true});
+   });
+   await syncWorkbook(env, read);
+   ctx.waitUntil(dispatch(env, b.id));
+   return json({ok:true});
   }
   return json({error:'Метод недоступен.'},405);
  }
@@ -146,5 +238,5 @@ export default {
   }
   return response;
  },
- async scheduled(_,env,ctx) { ctx.waitUntil(drain(env)); }
+ async scheduled(_,env,ctx) { ctx.waitUntil(dispatch(env)); }
 };

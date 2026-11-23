@@ -4,6 +4,7 @@ exclude:
   - node_modules/
   - scripts/
   - src/
+  - tests/
   - package.json
   - package-lock.json
   - README.md

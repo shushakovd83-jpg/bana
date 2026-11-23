@@ -18,3 +18,13 @@
 .entry-edit .fields { grid-template-columns:repeat(3,minmax(0,1fr)); margin:.5rem 0 1rem; }
 .save-status:not(:empty) { margin:.7rem 0; }
 @media(max-width:650px){.admin-heading { flex-direction:column; align-items:start; }.entry-edit .fields{grid-template-columns:1fr 1fr;}.entry-edit .fields label:last-child{grid-column:1/-1;}.entry-top{flex-wrap:wrap;}.status-label{text-align:left;}.admin-heading h1{font-size:2.3rem;}}
+
+.vk-panel { margin:1rem 0 1.3rem; padding:1.15rem; border:1px solid var(--line); border-radius:.8rem; background:#fffbf5; }
+.vk-panel h2 { font-size:1.35rem; letter-spacing:-.03em; }
+.vk-panel p { margin:.45rem 0; }
+.vk-panel summary { cursor:pointer; font-weight:550; padding:.45rem 0; }
+.vk-panel .fields { grid-template-columns:1fr; margin:.85rem 0; }
+.vk-panel a { color:var(--copper); text-decoration:underline; }
+#vk-result:empty { display:none; }
+#vk-retry { margin-top:.6rem; }
+.entry-notice { color:var(--muted); font-size:.88rem; }

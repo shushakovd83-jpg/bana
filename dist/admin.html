@@ -22,12 +22,27 @@
         <a href="/api/export.xlsx" class="button primary">Скачать Excel</a>
       </div>
     </div>
+    <section id="vk" class="vk-panel" aria-labelledby="vk-title">
+      <h2 id="vk-title">Уведомления ВКонтакте</h2>
+      <p id="vk-state" role="status">Проверяем подключение…</p>
+      <details id="vk-settings">
+        <summary>Подключить или заменить ключ</summary>
+        <form id="vk-connect">
+          <p>Со своего профиля <strong>e.shushakov</strong> отправьте «Начать» в <a href="https://vk.me/nagore59" target="_blank" rel="noopener noreferrer">чат «Весны»</a>.</p>
+          <p>В <a href="https://vk.ru/nagore59" target="_blank" rel="noopener noreferrer">сообществе</a> включите «Управление → Сообщения». Затем в «Управление → Работа с API → Ключи доступа» создайте ключ с правом на сообщения сообщества.</p>
+          <div class="fields"><label for="vk-token">Ключ доступа сообщества<input type="password" id="vk-token" name="token" autocomplete="off" spellcheck="false" maxlength="2048" required></label></div>
+          <button type="submit" class="button primary">Отправить проверку и подключить</button>
+        </form>
+      </details>
+      <button type="button" class="button neutral" id="vk-retry" hidden>Повторить отправку</button>
+      <p id="vk-result" role="status"></p>
+    </section>
     <p id="journal-status" role="status">Загружаем заявки…</p>
     <ul id="entries" aria-label="Заявки"></ul>
     <template id="entry-template">
       <li class="entry">
         <div class="entry-top"><div><h2 class="entry-title"></h2><p class="guest-info"></p></div><strong class="status-label"></strong></div>
-        <p class="entry-time"></p><p class="entry-price"></p><p class="previous" hidden></p>
+        <p class="entry-time"></p><p class="entry-price"></p><p class="entry-notice" hidden></p><p class="previous" hidden></p>
         <details class="entry-edit"><summary>Изменить бронь</summary>
           <form>
             <div class="fields">

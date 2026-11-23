@@ -35,6 +35,11 @@ function buildEntry(row) {
   item.querySelector('.entry-time').textContent = readableDay(row.day) + ' · ' + row.start + '–' + end + ' · Гостей: ' + row.guests;
   item.querySelector('.entry-price').textContent = (withBarrel ? 'Баня с кедровой бочкой' : 'Только баня') + ' · ' + money.format(total);
   item.querySelector('.status-label').textContent = statusText[row.status] || row.status;
+  const notice = item.querySelector('.entry-notice');
+  if (row.notification === 'pending' || row.notification === 'sent') {
+    notice.textContent = row.notification === 'sent' ? 'Уведомление о заявке отправлено в ВК.' : 'Уведомление о заявке в очереди на отправку.';
+    notice.hidden = false;
+  }
   const previous = describePrevious(row.previous);
   if (previous) {
     const previousText = item.querySelector('.previous');
@@ -112,3 +117,64 @@ async function refresh(successText = '') {
 }
 reloadButton.addEventListener('click', () => refresh());
 refresh();
+
+const vkSettings = document.querySelector('#vk-settings');
+const vkForm = document.querySelector('#vk-connect');
+const vkState = document.querySelector('#vk-state');
+const vkResult = document.querySelector('#vk-result');
+const vkRetry = document.querySelector('#vk-retry');
+
+async function vkRequest(path, input) {
+  const options = {cache:'no-store'};
+  if (input) Object.assign(options, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(input)});
+  const response = await fetch(path, options);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Попробуйте ещё раз.');
+  return data;
+}
+
+async function showVKStatus() {
+  try {
+    const {connected, pending} = await vkRequest('/api/admin/vk');
+    vkState.textContent = (connected ? 'Получатель уведомлений — e.shushakov.' : 'Для отправки заявок подключите сообщество «Весна».') +
+      (pending ? ' В очереди: ' + pending + '.' : '');
+    vkRetry.hidden = !connected || !pending;
+    if (!connected) vkSettings.open = true;
+  } catch {
+    vkState.textContent = 'Не удалось получить состояние подключения. Обновите страницу.';
+  }
+}
+
+vkForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = vkForm.elements.token;
+  const token = input.value.trim();
+  if (!token || vkForm.inert) return;
+  vkForm.inert = true;
+  input.value = '';
+  vkResult.textContent = 'Проверяем, принимает ли ВК сообщение…';
+  try {
+    await vkRequest('/api/admin/vk', {token});
+    vkSettings.open = false;
+    vkResult.textContent = 'ВК принял проверочное сообщение. Подключение сохранено.';
+    await showVKStatus();
+    await refresh();
+  } catch (error) {
+    vkResult.textContent = error.message || 'Не удалось подключить сообщество.';
+  } finally {
+    vkForm.inert = false;
+  }
+});
+
+vkRetry.addEventListener('click', async () => {
+  vkRetry.disabled = true;
+  try {
+    const result = await vkRequest('/api/admin/vk/retry', {});
+    vkResult.textContent = 'Отправлено: ' + result.sent + '. Ошибок отправки: ' + result.failed + '.';
+    await Promise.all([showVKStatus(), refresh()]);
+  } catch { vkResult.textContent = 'Не удалось повторить отправку.'; }
+  finally { vkRetry.disabled = false; }
+});
+
+reloadButton.addEventListener('click', showVKStatus);
+showVKStatus();
