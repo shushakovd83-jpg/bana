@@ -1,0 +1,47 @@
+name: Подключить Amvera к сайту
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: Публичный HTTPS-адрес приложения в Amvera
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: connect-production-bookings
+  cancel-in-progress: false
+
+jobs:
+  connect:
+    if: github.ref == 'refs/heads/main' && github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Проверить новый сервер
+        env:
+          API_URL: ${{ inputs.api_url }}
+        run: node scripts/connect-amvera.mjs "$API_URL"
+      - name: Переключить сайт и журнал
+        run: |
+          if ! git diff --quiet -- api-config.json; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add api-config.json
+            git commit -m 'Подключить проверенный сервер Amvera'
+            git push origin HEAD:main
+          fi
+      - name: Обновить GitHub Pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/$GITHUB_REPOSITORY/pages/builds" --silent

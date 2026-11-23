@@ -13,6 +13,8 @@ const state = await response.json();
 if (!state.ready || state.service !== 'vesna-bookings') throw Error('По этому адресу не запущен сервер «Весны».');
 const preflight = await probe('/api/bookings', {method:'OPTIONS'});
 if (preflight.status !== 204 || !preflight.headers.get('access-control-allow-methods')?.includes('POST')) throw Error('Форма пока не может отправлять заявки.');
+const login = await probe('/api/session', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+if (login.status !== 401) throw Error('Сервер ещё не готов ко входу в журнал. Проверьте секрет ADMIN_PASSWORD в Amvera.');
 for (const path of ['/api/admin','/api/export.xlsx']) {
   if ((await probe(path)).status !== 401) throw Error('Сервер не подтвердил защиту журнала.');
 }
