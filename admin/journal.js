@@ -8,6 +8,29 @@ const statusText = {new: 'Новая заявка', confirmed: 'Бронь по�
 const money = new Intl.NumberFormat('ru-RU', {style: 'currency', currency: 'RUB', maximumFractionDigits: 0});
 let busy = false;
 
+const loginBox = document.querySelector('#login-box');
+const journalContent = document.querySelector('#journal-content');
+const loginForm = document.querySelector('#login-form');
+const loginStatus = document.querySelector('#login-status');
+let session = null;
+function lockJournal(message = '') {
+  session = null;
+  entries.replaceChildren();
+  document.querySelector('#vk-token').value = '';
+  document.querySelector('#vk-result').textContent = '';
+  journalContent.hidden = true;
+  loginBox.hidden = false;
+  loginStatus.textContent = message;
+}
+async function authorized(path, options = {}) {
+  if (!session) throw new Error('Войдите в журнал.');
+  const headers = new Headers(options.headers);
+  headers.set('Authorization', 'Bearer ' + session.token);
+  const response = await VesnaAPI.request(path, {...options,headers,cache:'no-store'});
+  if (response.status === 401) lockJournal('Сеанс завершён. Введите пароль ещё раз.');
+  return response;
+}
+
 function readableDay(day) {
   return String(day).split('-').reverse().join('.');
 }
@@ -66,7 +89,7 @@ function buildEntry(row) {
     output.textContent = 'Сохраняем изменения…';
     let saved = false;
     try {
-      const response = await fetch('/api/admin', {
+      const response = await authorized('/api/admin', {
         method: 'POST', headers: {'Content-Type':'application/json', 'Accept':'application/json'},
         body: JSON.stringify({id:row.id,version:row.version,day:day.value,start:start.value,status:status.value})
       });
@@ -97,7 +120,7 @@ async function refresh(successText = '') {
   entries.inert = true;
   journalStatus.textContent = 'Загружаем заявки…';
   try {
-    const response = await fetch('/api/admin', {cache:'no-store',headers:{'Accept':'application/json'}});
+    const response = await authorized('/api/admin', {cache:'no-store',headers:{'Accept':'application/json'}});
     if (!response.ok) {
       journalStatus.textContent = response.status === 401 || response.status === 403
         ? 'Для просмотра журнала нужен доступ администратора.' : 'Не удалось загрузить журнал. Нажмите «Обновить».';
@@ -116,7 +139,6 @@ async function refresh(successText = '') {
   }
 }
 reloadButton.addEventListener('click', () => refresh());
-refresh();
 
 const vkSettings = document.querySelector('#vk-settings');
 const vkForm = document.querySelector('#vk-connect');
@@ -127,7 +149,7 @@ const vkRetry = document.querySelector('#vk-retry');
 async function vkRequest(path, input) {
   const options = {cache:'no-store'};
   if (input) Object.assign(options, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(input)});
-  const response = await fetch(path, options);
+  const response = await authorized(path, options);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Попробуйте ещё раз.');
   return data;
@@ -176,5 +198,55 @@ vkRetry.addEventListener('click', async () => {
   finally { vkRetry.disabled = false; }
 });
 
-reloadButton.addEventListener('click', showVKStatus);
-showVKStatus();
+reloadButton.addEventListener('click', () => { if (session?.role === 'owner') showVKStatus(); });
+
+loginForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = document.querySelector('#journal-password');
+  const password = input.value;
+  if (!password || loginForm.inert) return;
+  loginForm.inert = true;
+  loginStatus.textContent = 'Проверяем пароль…';
+  try {
+    const response = await VesnaAPI.request('/api/session', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({password})});
+    const result = await response.json();
+    if (!response.ok || !result.token) throw new Error(result.error || 'Вход не выполнен.');
+    session = result;
+    input.value = '';
+    loginBox.hidden = true;
+    journalContent.hidden = false;
+    document.querySelector('#vk').hidden = result.role !== 'owner';
+    await Promise.all([refresh(), result.role === 'owner' ? showVKStatus() : undefined]);
+  } catch (error) {
+    loginStatus.textContent = error instanceof TypeError ? 'Не удалось связаться с сервером. Попробуйте ещё раз.' : error.message;
+  } finally { loginForm.inert = false; }
+});
+
+document.querySelector('#logout').addEventListener('click', async () => {
+  try { await authorized('/api/session', {method:'DELETE'}); } finally { lockJournal(); }
+});
+document.querySelector('#excel').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const response = await authorized('/api/export.xlsx');
+    if (!response.ok) throw new Error('Не удалось загрузить Excel.');
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(await response.blob());
+    link.href = url;
+    link.download = 'Весна — бронирования.xlsx';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch { journalStatus.textContent = 'Не удалось скачать таблицу. Попробуйте ещё раз.'; }
+  finally { button.disabled = false; }
+});
+
+VesnaAPI.origin().then(() => {
+  loginForm.querySelector('button').disabled = false;
+}).catch(() => {
+  document.querySelector('#journal-password').disabled = true;
+  loginStatus.textContent = 'Журнал откроется после подключения сервера Amvera.';
+});

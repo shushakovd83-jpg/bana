@@ -111,10 +111,7 @@ form.addEventListener('submit', async event => {
     if (!pendingBooking || pendingBooking.fingerprint !== fingerprint) {
       pendingBooking = {fingerprint, id: crypto.randomUUID()};
     }
-    const bookingEndpoint = location.origin === 'https://shushakovd83-jpg.github.io'
-      ? 'https://vesna-banya-chaikovsky.almondmarmalade4.chatgpt.site/api/bookings'
-      : '/api/bookings';
-    const response = await fetch(bookingEndpoint, {
+    const response = await VesnaAPI.request('/api/bookings', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
       body: JSON.stringify({...booking, id: pendingBooking.id}),
@@ -134,8 +131,9 @@ form.addEventListener('submit', async event => {
     form.hidden = true;
     requestPanel.hidden = false;
     requestPanel.querySelector('h3').focus();
-  } catch {
-    sendError.textContent = 'Подтверждение от сайта не получено. Проверьте соединение и повторите отправку.';
+  } catch (error) {
+    sendError.textContent = error.message === 'Сервер онлайн-записи ещё не подключён.' ? error.message :
+      'Подтверждение от сайта не получено. Проверьте соединение и повторите отправку.';
   } finally {
     clearTimeout(timer);
     form.inert = false;

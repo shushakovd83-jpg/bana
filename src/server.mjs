@@ -1,6 +1,4 @@
-import {authorizedJob} from './job-identity.mjs';
-import {notificationTool} from './notification-tool.mjs';
-import {syncWorkbook, downloadWorkbook, workbookKey} from './workbook.mjs';
+import {syncWorkbook, downloadWorkbook} from './workbook.mjs';
 import {setVKToken, vkCredentials} from './vk-settings.mjs';
 import {sendVK, callback, vkLink} from './vk.mjs';
 const KEY='private/journal-v1.json';
@@ -110,42 +108,31 @@ async function dispatch(env, bookingId, force = false) {
  return result;
 }
 
-function isOwner(req, env) {
- return !!req.headers.get('oai-authenticated-user-id') && !!env.JOURNAL_OWNER_EMAIL &&
-  req.headers.get('oai-authenticated-user-email')?.toLowerCase() === env.JOURNAL_OWNER_EMAIL.toLowerCase();
-}
-
 const pagesOrigin = 'https://shushakovd83-jpg.github.io';
-function pagesBookingRequest(req) {
- return new URL(req.url).pathname === '/api/bookings' && req.headers.get('origin') === pagesOrigin;
+function publicFileRequest(req) {
+ return req.headers.get('origin') === 'null' && new URL(req.url).pathname === '/api/bookings';
+}
+function allowedOrigin(req, env) {
+ const origin = req.headers.get('origin');
+ return !origin || publicFileRequest(req) || origin === (env.PAGES_ORIGIN || pagesOrigin) || origin === new URL(req.url).origin;
 }
 async function body(req){
  if(!req.headers.get('content-type')?.includes('application/json'))fail(415,'Требуется JSON.');
- if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin&&!pagesBookingRequest(req))fail(403,'Запрос отклонён.');
  if(Number(req.headers.get('content-length'))>8192)fail(413,'Слишком большой запрос.');
  const text=await req.text();if(text.length>8192)fail(413,'Слишком большой запрос.');
  try{const b=JSON.parse(text);if(!b||typeof b!=='object')throw Error();return b;}catch{fail(400,'Некорректная заявка.');}
 }
-function asset(path,privatePage=false){
- const data=STATIC_FILES[path];if(typeof data!=='string')return new Response('Страница не найдена',{status:404});
- const mime={html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',webp:'image/webp',woff:'font/woff',txt:'text/plain'};
- return new Response(Uint8Array.from(atob(data),c=>c.charCodeAt(0)),{headers:{'Content-Type':mime[path.split('.').pop()]||'application/octet-stream','Cache-Control':privatePage?'private, no-store':'no-cache','X-Content-Type-Options':'nosniff'}});
-}
-async function processNotifications(env) {
- await syncWorkbook(env, read);
- const result = await dispatch(env);
- const stored = await env.BUCKET.head(workbookKey);
- const {rows} = await read(env);
- return {excelReady: !!stored, ...result, pending: rows.reduce((n,r) => n + r.events.length, 0)};
-}
-
 async function route(req,env,ctx){
  const {pathname:p}=new URL(req.url);
- if (p === '/mcp') return notificationTool(req, isOwner(req, env), () => processNotifications(env));
- if (p === '/api/jobs/notifications') {
-  if (req.method !== 'POST') return json({error:'Используйте POST.'},405);
-  if (!await authorizedJob(req.headers.get('Authorization'))) return json({error:'Требуется авторизация.'},401);
-  return json(await processNotifications(env));
+ if (!allowedOrigin(req, env)) fail(403,'Запрос отклонён.');
+ if (p === '/health' && req.method === 'GET') return json({service:'vesna-bookings', ready:true});
+ if (p === '/api/session' && req.method === 'POST') {
+  const data=await body(req);
+  return json(env.ACCESS.signIn(data.password, ctx.address));
+ }
+ if (p === '/api/session' && req.method === 'DELETE') {
+  env.ACCESS.signOut(req);
+  return json({ok:true});
  }
  if(p==='/vk/callback')return callback(req,env,(token,peer)=>change(env,rows=>{
   const row=rows.find(r=>r.token===token);
@@ -168,11 +155,10 @@ async function route(req,env,ctx){
   ctx.waitUntil(dispatch(env, data.id));
   return json(result,201);
  }
- if(['/admin','/admin/','/admin.html','/api/admin','/api/export.xlsx','/api/admin/vk','/api/admin/vk/retry'].includes(p)){
-  const uid=req.headers.get('oai-authenticated-user-id');
-  if(!uid&&!p.startsWith('/api/'))return new Response(null,{status:302,headers:{Location:'/signin-with-chatgpt?return_to=%2Fadmin','Cache-Control':'private, no-store'}});
-  if(!isOwner(req,env))return json({error:'Доступ только для владельца.'},uid?403:401);
-  if(p.startsWith('/admin')&&req.method==='GET')return asset('/admin.html',true);
+ if (['/api/admin','/api/export.xlsx','/api/admin/vk','/api/admin/vk/retry'].includes(p)) {
+  const role=env.ACCESS.role(req);
+  if (!role) return json({error:'Войдите в журнал.'},401);
+  if (p.startsWith('/api/admin/vk') && role !== 'owner') return json({error:'Настройки ВК доступны владельцу.'},403);
   if (p === '/api/admin/vk' && req.method === 'GET') {
    const credentials = await vkCredentials(env);
    const {rows} = await read(env);
@@ -221,13 +207,11 @@ async function route(req,env,ctx){
   }
   return json({error:'Метод недоступен.'},405);
  }
- if(p.startsWith('/api/'))return json({error:'Не найдено.'},404);
- if(req.method!=='GET')return new Response(null,{status:405});
- return asset(p==='/'?'/index.html':p);
+ return json({error:'Страница не найдена.'},404);
 }
 export default {
  async fetch(req, env, ctx) {
-  const fromPages = pagesBookingRequest(req);
+  const fromPages = req.headers.get('origin') === (env.PAGES_ORIGIN || pagesOrigin) || publicFileRequest(req);
   const preflight = fromPages && req.method === 'OPTIONS';
   let response;
   try {
@@ -236,14 +220,14 @@ export default {
    response = json({error:e.status ? e.message : 'Сервис временно недоступен. Попробуйте ещё раз.'},e.status || 503);
   }
   if (fromPages) {
-   response.headers.set('Access-Control-Allow-Origin', pagesOrigin);
+   response.headers.set('Access-Control-Allow-Origin', req.headers.get('origin'));
    response.headers.append('Vary', 'Origin');
    if (preflight) {
-    response.headers.set('Access-Control-Allow-Methods', 'POST');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
    }
   }
   return response;
  },
- async scheduled(_,env,ctx) { ctx.waitUntil(dispatch(env)); }
+ async scheduled(_,env) { await syncWorkbook(env, read); return dispatch(env); }
 };

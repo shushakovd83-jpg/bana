@@ -1,1 +1,7 @@
-{"name":"vesna-bookings","private":true,"type":"module","scripts":{"build":"node scripts/build.mjs"},"devDependencies":{"esbuild":"0.25.12"},"dependencies":{"jose":"6.2.18"}}
+{
+  "name": "vesna-bookings",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=24"},
+  "scripts": {"start": "node src/http.mjs", "test": "node --test tests/*.test.mjs"}
+}

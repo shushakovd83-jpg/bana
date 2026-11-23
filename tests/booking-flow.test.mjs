@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
 import {test} from 'node:test';
 import worker from '../src/server.mjs';
+import {adminAccess} from '../src/admin-access.mjs';
 
 const journal = 'private/journal-v1.json';
 const workbook = 'private/vesna.xlsx';
 const settings = 'private/settings/vk.json';
 const origin = 'https://shushakovd83-jpg.github.io';
-const owner = {'oai-authenticated-user-id':'owner', 'oai-authenticated-user-email':'owner@example.test'};
+const ownerPassword = 'example-password-for-local-tests';
 
 class TestBucket {
   objects = new Map();
@@ -30,7 +31,9 @@ class TestBucket {
 }
 
 function setup() {
-  const env = {BUCKET:new TestBucket(), JOURNAL_OWNER_EMAIL:owner['oai-authenticated-user-email'],
+  const access = adminAccess({ADMIN_PASSWORD:ownerPassword});
+  const owner = {authorization:'Bearer ' + access.signIn(ownerPassword,'local').token};
+  const env = {BUCKET:new TestBucket(), ACCESS:access,
     VK_SETTINGS_KEY:Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64')};
   const work = [];
   const ctx = {waitUntil(promise) { work.push(promise); }};
@@ -39,7 +42,7 @@ function setup() {
     headers:{'content-type':'application/json', ...headers},
     body:data ? JSON.stringify(data) : undefined
   }), env, ctx);
-  return {env, call, settle:() => Promise.all(work.splice(0))};
+  return {env, owner, call, settle:() => Promise.all(work.splice(0))};
 }
 
 function booking() {
@@ -48,7 +51,7 @@ function booking() {
 }
 
 test('Pages submission persists a private, downloadable Excel row and tolerates a repeated receipt', async () => {
-  const {env, call, settle} = setup();
+  const {env, owner, call, settle} = setup();
   const data = booking();
   for (let i = 0; i < 2; i++) {
     const response = await call('/api/bookings', data, {origin});
@@ -84,7 +87,7 @@ test('Pages submission persists a private, downloadable Excel row and tolerates 
 });
 
 test('VK verifies the recipient, then drains queued bookings and retries a failure with the same VK id', async t => {
-  const {call, env, settle} = setup();
+  const {call, env, owner, settle} = setup();
   const first = booking();
   const token = 'community-token-for-this-test';
   const sent = [], attempts = [];
@@ -162,12 +165,14 @@ test('a failed workbook write can be retried and simultaneous submissions leave 
   for (const {id} of group) assert.ok(file.body.includes(Buffer.from(id)), id);
 });
 
-test('the background job can check the persistent workbook, without exposing bookings to the public', async () => {
+test('the service can refresh the workbook on its own and admin access requires the journal password', async () => {
   const {call, env} = setup();
-  const rpc = {jsonrpc:'2.0', id:42, method:'tools/call', params:{name:'process_booking_notifications', arguments:{}}};
-  assert.equal((await call('/mcp', rpc)).status, 403);
-  assert.equal(await env.BUCKET.get(workbook), null);
-  const reply = await (await call('/mcp', rpc, owner)).json();
-  assert.deepEqual(JSON.parse(reply.result.content[0].text), {excelReady:true,connected:false,sent:0,failed:0,pending:0});
+  assert.equal((await call('/api/export.xlsx', null, {'oai-authenticated-user-id':'owner'})).status,401);
+  const login = await call('/api/session', {password:ownerPassword}, {origin});
+  assert.equal(login.status,200);
+  const {role,token} = await login.json();
+  assert.equal(role,'owner');
+  assert.equal((await call('/api/admin', null, {authorization:'Bearer '+token,origin})).status,200);
+  assert.deepEqual(await worker.scheduled(null, env), {connected:false,sent:0,failed:0});
   assert.ok((await env.BUCKET.get(workbook)).body.includes(Buffer.from('xl/tables/table1.xml')));
 });

@@ -5,21 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>Журнал заявок · Баня «Весна»</title>
-  <link rel="stylesheet" href="/style.css">
-  <link rel="stylesheet" href="/admin.css">
-  <script defer src="/admin.js"></script>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="journal.css">
+  <script defer src="../api.js"></script>
+  <script defer src="journal.js"></script>
 </head>
 <body class="admin">
   <header class="admin-head"><div class="wrap">
-    <a class="wordmark" href="/">Весна<span>БАНЯ</span></a>
-    <a href="/">На сайт</a>
+    <a class="wordmark" href="../">Весна<span>БАНЯ</span></a>
+    <a href="../">На сайт</a>
   </div></header>
   <main class="wrap admin-main">
+    <div id="login-box">
+      <h1>Вход в журнал «Весны»</h1>
+      <form id="login-form" class="vk-panel">
+        <div class="fields"><label for="journal-password">Пароль администратора<input type="password" id="journal-password" autocomplete="current-password" required></label></div>
+        <button class="button primary" type="submit" disabled>Войти</button>
+        <p role="status" id="login-status"></p>
+      </form>
+    </div>
+    <div id="journal-content" hidden>
     <div class="admin-heading">
       <div><h1>Журнал заявок</h1><p>Время местное, г. Чайковский.</p></div>
       <div class="admin-actions">
         <button type="button" class="button neutral" id="reload">Обновить</button>
-        <a href="/api/export.xlsx" class="button primary">Скачать Excel</a>
+        <button type="button" class="button primary" id="excel">Скачать Excel</button>
+        <button type="button" class="button neutral" id="logout">Выйти</button>
       </div>
     </div>
     <section id="vk" class="vk-panel" aria-labelledby="vk-title">
@@ -56,7 +67,8 @@
         </details>
       </li>
     </template>
-    <noscript>Включите JavaScript для работы с журналом. Файл Excel доступен по ссылке выше.</noscript>
+    </div>
+    <noscript>Включите JavaScript для входа в журнал и скачивания Excel.</noscript>
   </main>
 </body>
 </html>

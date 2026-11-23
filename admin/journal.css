@@ -28,3 +28,8 @@
 #vk-result:empty { display:none; }
 #vk-retry { margin-top:.6rem; }
 .entry-notice { color:var(--muted); font-size:.88rem; }
+#login-box { max-width:32rem; margin:0 auto; }
+#login-box h1 { font-size:clamp(1.8rem,5vw,2.7rem); line-height:1.12; }
+#login-box .fields { grid-template-columns:1fr; margin-bottom:1rem; }
+#login-status:empty { display:none; }
+[hidden] { display:none !important; }
