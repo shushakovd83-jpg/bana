@@ -1,3 +1,4 @@
+import {authorizedJob} from './job-identity.mjs';
 import {notificationTool} from './notification-tool.mjs';
 import {syncWorkbook, downloadWorkbook, workbookKey} from './workbook.mjs';
 import {setVKToken, vkCredentials} from './vk-settings.mjs';
@@ -130,16 +131,22 @@ function asset(path,privatePage=false){
  const mime={html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',webp:'image/webp',woff:'font/woff',txt:'text/plain'};
  return new Response(Uint8Array.from(atob(data),c=>c.charCodeAt(0)),{headers:{'Content-Type':mime[path.split('.').pop()]||'application/octet-stream','Cache-Control':privatePage?'private, no-store':'no-cache','X-Content-Type-Options':'nosniff'}});
 }
+async function processNotifications(env) {
+ await syncWorkbook(env, read);
+ const result = await dispatch(env);
+ const stored = await env.BUCKET.head(workbookKey);
+ const {rows} = await read(env);
+ return {excelReady: !!stored, ...result, pending: rows.reduce((n,r) => n + r.events.length, 0)};
+}
+
 async function route(req,env,ctx){
  const {pathname:p}=new URL(req.url);
- if (p === '/mcp') return notificationTool(req, isOwner(req, env), async () => {
-  await syncWorkbook(env, read);
-  const result = await dispatch(env);
-  // Read the stored file metadata and the queue again after processing.
-  const stored = await env.BUCKET.head(workbookKey);
-  const {rows} = await read(env);
-  return {excelReady: !!stored, ...result, pending: rows.reduce((n,r) => n + r.events.length, 0)};
- });
+ if (p === '/mcp') return notificationTool(req, isOwner(req, env), () => processNotifications(env));
+ if (p === '/api/jobs/notifications') {
+  if (req.method !== 'POST') return json({error:'Используйте POST.'},405);
+  if (!await authorizedJob(req.headers.get('Authorization'))) return json({error:'Требуется авторизация.'},401);
+  return json(await processNotifications(env));
+ }
  if(p==='/vk/callback')return callback(req,env,(token,peer)=>change(env,rows=>{
   const row=rows.find(r=>r.token===token);
   if(!row||row.peer)return {skip:true};row.peer=peer;return {};

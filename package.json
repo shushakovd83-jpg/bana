@@ -1,1 +1,1 @@
-{"name":"vesna-bookings","private":true,"type":"module","scripts":{"build":"node scripts/build.mjs"},"devDependencies":{"esbuild":"0.25.12"}}
+{"name":"vesna-bookings","private":true,"type":"module","scripts":{"build":"node scripts/build.mjs"},"devDependencies":{"esbuild":"0.25.12"},"dependencies":{"jose":"6.2.18"}}
